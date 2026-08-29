@@ -3,66 +3,311 @@ from openai import OpenAI
 import os
 import json
 
-# Page configuration
+
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
+
 st.set_page_config(
-    page_title="Voice Notes → Action Items",
+    page_title="VoiceNotes AI",
     page_icon="🎙️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# -----------------------------
-# PAGE HEADER
-# -----------------------------
 
-st.title("🎙️ Voice Notes → Action Items")
-st.subheader(
-    "Turn your voice notes into summaries, tasks, and deadlines using AI"
-)
+# ============================================================
+# CUSTOM CSS
+# ============================================================
 
-st.divider()
+st.markdown("""
+<style>
 
-# -----------------------------
+    .main {
+        background-color: #f8fafc;
+    }
+
+    .hero {
+        padding: 2rem;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #2563eb, #7c3aed);
+        color: white;
+        margin-bottom: 2rem;
+    }
+
+    .hero h1 {
+        color: white;
+        margin-bottom: 0.5rem;
+    }
+
+    .hero p {
+        font-size: 18px;
+        opacity: 0.9;
+    }
+
+    .section-title {
+        font-size: 24px;
+        font-weight: 700;
+        margin-top: 10px;
+        margin-bottom: 15px;
+    }
+
+    .feature-card {
+        padding: 20px;
+        border-radius: 15px;
+        background: white;
+        border: 1px solid #e5e7eb;
+        min-height: 170px;
+    }
+
+    .task-card {
+        padding: 15px;
+        border-radius: 15px;
+        background: white;
+        border: 1px solid #e5e7eb;
+        margin-bottom: 12px;
+    }
+
+    .small-text {
+        color: #64748b;
+    }
+
+</style>
+""", unsafe_allow_html=True)
+
+
+# ============================================================
+# SESSION STATE
+# ============================================================
+
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+if "result" not in st.session_state:
+    st.session_state.result = None
+
+if "transcript" not in st.session_state:
+    st.session_state.transcript = ""
+
+
+# ============================================================
 # API KEY
-# -----------------------------
+# ============================================================
 
 api_key = os.getenv("OPENAI_API_KEY")
 
-# -----------------------------
-# AUDIO INPUT
-# -----------------------------
 
-st.header("🎤 Upload or Record Your Voice Note")
+# ============================================================
+# SIDEBAR
+# ============================================================
 
-uploaded_file = st.file_uploader(
-    "Upload an audio file",
-    type=["mp3", "wav", "m4a", "ogg"]
-)
+with st.sidebar:
 
-audio_value = st.audio_input(
-    "Or record a voice note"
-)
+    st.markdown("## 🎙️ VoiceNotes AI")
 
-audio_file = uploaded_file if uploaded_file else audio_value
+    st.caption(
+        "Turn voice notes into summaries, "
+        "tasks and deadlines using AI."
+    )
 
+    st.divider()
 
-# -----------------------------
-# AUDIO PROCESSING
-# -----------------------------
+    st.markdown("### ⚙️ Features")
 
-if audio_file:
+    st.write("🗣️ Speech-to-Text")
+    st.write("✨ AI Summaries")
+    st.write("✅ Action Items")
+    st.write("📅 Deadline Detection")
+    st.write("⚡ Priority Detection")
 
-    st.audio(audio_file)
+    st.divider()
+
+    st.markdown("### 📊 Processing History")
+
+    st.metric(
+        "Notes Processed",
+        len(st.session_state.history)
+    )
 
     if st.button(
-        "✨ Process Voice Note",
+        "🗑️ Clear History",
         use_container_width=True
     ):
+        st.session_state.history = []
+        st.session_state.result = None
+        st.session_state.transcript = ""
+        st.rerun()
+
+    st.divider()
+
+    st.caption(
+        "Built with Streamlit + Speech-to-Text + AI"
+    )
+
+
+# ============================================================
+# HERO SECTION
+# ============================================================
+
+st.markdown("""
+<div class="hero">
+
+<h1>🎙️ Voice Notes → Action Items</h1>
+
+<p>
+Transform your voice notes into clear summaries,
+actionable tasks and important deadlines.
+</p>
+
+</div>
+""", unsafe_allow_html=True)
+
+
+# ============================================================
+# MAIN TABS
+# ============================================================
+
+tab1, tab2 = st.tabs([
+    "🎤 Process Voice Note",
+    "📚 History"
+])
+
+
+# ============================================================
+# TAB 1 - PROCESS AUDIO
+# ============================================================
+
+with tab1:
+
+    left, right = st.columns(
+        [1, 1],
+        gap="large"
+    )
+
+    # --------------------------------------------------------
+    # LEFT SIDE - AUDIO INPUT
+    # --------------------------------------------------------
+
+    with left:
+
+        st.markdown(
+            '<div class="section-title">'
+            '🎤 Add Your Voice Note'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        input_method = st.radio(
+            "Choose input method",
+            [
+                "📁 Upload Audio",
+                "🎙️ Record Audio"
+            ],
+            horizontal=True
+        )
+
+        audio_file = None
+
+        if input_method == "📁 Upload Audio":
+
+            uploaded_file = st.file_uploader(
+                "Upload an audio file",
+                type=[
+                    "mp3",
+                    "wav",
+                    "m4a",
+                    "ogg",
+                    "webm"
+                ]
+            )
+
+            if uploaded_file:
+                audio_file = uploaded_file
+
+        else:
+
+            recorded_audio = st.audio_input(
+                "Record your voice note"
+            )
+
+            if recorded_audio:
+                audio_file = recorded_audio
+
+
+        if audio_file:
+
+            st.success(
+                "Audio ready for processing!"
+            )
+
+            st.audio(audio_file)
+
+            process_button = st.button(
+                "✨ Process with AI",
+                use_container_width=True,
+                type="primary"
+            )
+
+        else:
+
+            process_button = False
+
+            st.info(
+                "Upload or record a voice note "
+                "to begin."
+            )
+
+
+    # --------------------------------------------------------
+    # RIGHT SIDE - HOW IT WORKS
+    # --------------------------------------------------------
+
+    with right:
+
+        st.markdown(
+            '<div class="section-title">'
+            '🤖 AI Processing'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        st.markdown("""
+<div class="feature-card">
+
+### 1️⃣ Speech Recognition
+
+Your voice is converted into an accurate
+text transcript.
+
+<br>
+
+### 2️⃣ AI Understanding
+
+The AI understands the meaning and
+important information.
+
+<br>
+
+### 3️⃣ Smart Extraction
+
+Tasks, priorities and deadlines are
+automatically identified.
+
+</div>
+""", unsafe_allow_html=True)
+
+
+    # ========================================================
+    # PROCESS BUTTON
+    # ========================================================
+
+    if process_button:
 
         if not api_key:
 
             st.error(
-                "OpenAI API key not found. "
-                "Configure OPENAI_API_KEY in your deployment secrets."
+                "🔑 OpenAI API key not configured. "
+                "Add OPENAI_API_KEY to your deployment secrets."
             )
 
         else:
@@ -73,12 +318,13 @@ if audio_file:
                     api_key=api_key
                 )
 
-                # -----------------------------
+
+                # =================================================
                 # SPEECH TO TEXT
-                # -----------------------------
+                # =================================================
 
                 with st.spinner(
-                    "🗣️ Converting speech to text..."
+                    "🗣️ Converting your voice into text..."
                 ):
 
                     transcription = (
@@ -90,65 +336,58 @@ if audio_file:
 
                 transcript = transcription.text
 
-                st.success(
-                    "Voice note processed successfully!"
-                )
+                st.session_state.transcript = transcript
 
-                # -----------------------------
-                # TRANSCRIPT
-                # -----------------------------
 
-                st.subheader(
-                    "📝 Transcript"
-                )
-
-                st.info(
-                    transcript
-                )
-
-                st.divider()
-
-                # -----------------------------
+                # =================================================
                 # AI ANALYSIS
-                # -----------------------------
+                # =================================================
 
                 with st.spinner(
-                    "🤖 AI is analyzing your voice note..."
+                    "🤖 AI is finding tasks and deadlines..."
                 ):
 
                     prompt = f"""
-Analyze the following voice note transcript.
+Analyze this voice note transcript.
 
 Return ONLY valid JSON.
 
-Use exactly this structure:
+Use this exact structure:
 
 {{
-    "summary": "Short clear summary",
+    "summary": "A short and clear summary",
 
     "action_items": [
         {{
-            "task": "Task description",
-            "deadline": "Deadline if mentioned, otherwise Not specified",
+            "task": "Description of the task",
+            "deadline": "Deadline or Not specified",
             "priority": "High, Medium, or Low"
         }}
     ],
 
     "deadlines": [
-        "List all deadlines or dates mentioned"
+        "Deadline 1",
+        "Deadline 2"
+    ],
+
+    "key_people": [
+        "Names of people mentioned"
     ]
 }}
 
-Rules:
+Instructions:
 
-1. Create a short and useful summary.
-2. Extract all actionable tasks.
-3. Detect dates, deadlines, and time references.
-4. Assign a reasonable priority to each task.
-5. Do not include markdown.
-6. Return only valid JSON.
+- Extract every actionable task.
+- Identify deadlines and dates.
+- Assign High, Medium or Low priority.
+- Create a concise summary.
+- Identify important people mentioned.
+- If information is unavailable,
+  return an empty list where appropriate.
+- Return ONLY valid JSON.
+- Do not use markdown.
 
-Transcript:
+VOICE NOTE TRANSCRIPT:
 
 {transcript}
 """
@@ -163,9 +402,9 @@ Transcript:
                                     "role": "system",
 
                                     "content": (
-                                        "You are an AI assistant that "
-                                        "analyzes voice notes and extracts "
-                                        "structured action items."
+                                        "You are an AI productivity "
+                                        "assistant that converts voice "
+                                        "notes into structured tasks."
                                     )
                                 },
 
@@ -178,88 +417,246 @@ Transcript:
                         )
                     )
 
-                result = (
+
+                result_text = (
                     response
                     .choices[0]
                     .message
                     .content
                 )
 
+
+                # =================================================
+                # CLEAN JSON RESPONSE
+                # =================================================
+
+                result_text = (
+                    result_text
+                    .replace("```json", "")
+                    .replace("```", "")
+                    .strip()
+                )
+
                 data = json.loads(
-                    result
+                    result_text
                 )
 
-                # -----------------------------
-                # SUMMARY
-                # -----------------------------
 
-                st.subheader(
-                    "✨ AI Summary"
-                )
+                # =================================================
+                # SAVE RESULT
+                # =================================================
+
+                st.session_state.result = data
+
+                st.session_state.history.append({
+                    "transcript": transcript,
+                    "summary": data.get(
+                        "summary",
+                        ""
+                    ),
+                    "action_count": len(
+                        data.get(
+                            "action_items",
+                            []
+                        )
+                    )
+                })
 
                 st.success(
-                    data.get(
-                        "summary",
-                        "No summary available."
-                    )
+                    "🎉 Voice note processed successfully!"
                 )
 
-                # -----------------------------
-                # ACTION ITEMS
-                # -----------------------------
 
-                st.subheader(
-                    "✅ Action Items"
+            except json.JSONDecodeError:
+
+                st.error(
+                    "AI returned an invalid format. "
+                    "Please try processing again."
                 )
 
-                action_items = data.get(
-                    "action_items",
-                    []
+
+            except Exception as e:
+
+                st.error(
+                    f"Processing error: {str(e)}"
                 )
 
-                if action_items:
 
-                    for index, item in enumerate(
-                        action_items,
-                        start=1
+    # ========================================================
+    # DISPLAY RESULTS
+    # ========================================================
+
+    if st.session_state.result:
+
+        data = st.session_state.result
+
+        st.divider()
+
+        st.markdown(
+            "## 📊 AI Analysis Results"
+        )
+
+
+        # ====================================================
+        # METRICS
+        # ====================================================
+
+        metric1, metric2, metric3 = st.columns(3)
+
+        action_count = len(
+            data.get(
+                "action_items",
+                []
+            )
+        )
+
+        deadline_count = len(
+            data.get(
+                "deadlines",
+                []
+            )
+        )
+
+        people_count = len(
+            data.get(
+                "key_people",
+                []
+            )
+        )
+
+        metric1.metric(
+            "✅ Action Items",
+            action_count
+        )
+
+        metric2.metric(
+            "📅 Deadlines",
+            deadline_count
+        )
+
+        metric3.metric(
+            "👥 People Mentioned",
+            people_count
+        )
+
+
+        # ====================================================
+        # RESULT TABS
+        # ====================================================
+
+        result_tab1, result_tab2, result_tab3, result_tab4 = (
+            st.tabs([
+                "📝 Transcript",
+                "✨ Summary",
+                "✅ Tasks",
+                "📅 Details"
+            ])
+        )
+
+
+        # ----------------------------------------------------
+        # TRANSCRIPT
+        # ----------------------------------------------------
+
+        with result_tab1:
+
+            st.markdown(
+                "### Complete Transcript"
+            )
+
+            st.text_area(
+                "Transcript",
+                value=st.session_state.transcript,
+                height=250,
+                disabled=True,
+                label_visibility="collapsed"
+            )
+
+
+        # ----------------------------------------------------
+        # SUMMARY
+        # ----------------------------------------------------
+
+        with result_tab2:
+
+            st.markdown(
+                "### ✨ AI Summary"
+            )
+
+            st.success(
+                data.get(
+                    "summary",
+                    "No summary generated."
+                )
+            )
+
+
+        # ----------------------------------------------------
+        # ACTION ITEMS
+        # ----------------------------------------------------
+
+        with result_tab3:
+
+            action_items = data.get(
+                "action_items",
+                []
+            )
+
+            if action_items:
+
+                for index, item in enumerate(
+                    action_items,
+                    start=1
+                ):
+
+                    with st.container(
+                        border=True
                     ):
 
-                        with st.container(
-                            border=True
-                        ):
+                        st.markdown(
+                            f"### {index}. "
+                            f"{item.get('task', 'Task')}"
+                        )
 
-                            st.markdown(
-                                f"### {index}. {item.get('task')}"
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+
+                            st.write(
+                                "📅 **Deadline:** "
+                                f"{item.get('deadline', 'Not specified')}"
                             )
 
-                            col1, col2 = st.columns(2)
+                        with col2:
 
-                            with col1:
+                            priority = item.get(
+                                "priority",
+                                "Medium"
+                            )
 
-                                st.write(
-                                    "📅 **Deadline:** "
-                                    f"{item.get('deadline')}"
-                                )
+                            st.write(
+                                f"⚡ **Priority:** {priority}"
+                            )
 
-                            with col2:
+            else:
 
-                                st.write(
-                                    "⚡ **Priority:** "
-                                    f"{item.get('priority')}"
-                                )
+                st.info(
+                    "No action items were detected."
+                )
 
-                else:
 
-                    st.info(
-                        "No action items detected."
-                    )
+        # ----------------------------------------------------
+        # DEADLINES + PEOPLE
+        # ----------------------------------------------------
 
-                # -----------------------------
-                # DEADLINES
-                # -----------------------------
+        with result_tab4:
 
-                st.subheader(
-                    "📅 Important Dates & Deadlines"
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                st.markdown(
+                    "### 📅 Important Dates"
                 )
 
                 deadlines = data.get(
@@ -282,60 +679,87 @@ Transcript:
                     )
 
 
-            except json.JSONDecodeError:
+            with col2:
 
-                st.error(
-                    "AI returned an unexpected format. "
-                    "Please try again."
+                st.markdown(
+                    "### 👥 People Mentioned"
                 )
 
-
-            except Exception as e:
-
-                st.error(
-                    f"Error processing voice note: {str(e)}"
+                people = data.get(
+                    "key_people",
+                    []
                 )
 
+                if people:
 
-# -----------------------------
-# PROJECT FEATURES
-# -----------------------------
+                    for person in people:
+
+                        st.write(
+                            f"👤 {person}"
+                        )
+
+                else:
+
+                    st.info(
+                        "No people detected."
+                    )
+
+
+# ============================================================
+# TAB 2 - HISTORY
+# ============================================================
+
+with tab2:
+
+    st.markdown(
+        "## 📚 Processing History"
+    )
+
+    history = st.session_state.history
+
+    if history:
+
+        for index, item in enumerate(
+            reversed(history),
+            start=1
+        ):
+
+            with st.expander(
+                f"Voice Note {index} — "
+                f"{item['action_count']} Tasks"
+            ):
+
+                st.markdown(
+                    "### ✨ Summary"
+                )
+
+                st.write(
+                    item["summary"]
+                )
+
+                st.markdown(
+                    "### 📝 Transcript"
+                )
+
+                st.write(
+                    item["transcript"]
+                )
+
+    else:
+
+        st.info(
+            "Your processed voice notes "
+            "will appear here."
+        )
+
+
+# ============================================================
+# FOOTER
+# ============================================================
 
 st.divider()
 
-col1, col2, col3 = st.columns(3)
-
-with col1:
-
-    st.subheader(
-        "🗣️ Speech to Text"
-    )
-
-    st.write(
-        "Convert voice notes into "
-        "accurate transcripts."
-    )
-
-
-with col2:
-
-    st.subheader(
-        "✨ AI Summary"
-    )
-
-    st.write(
-        "Understand long voice notes "
-        "quickly with concise summaries."
-    )
-
-
-with col3:
-
-    st.subheader(
-        "✅ Action Items"
-    )
-
-    st.write(
-        "Automatically extract tasks, "
-        "priorities, and deadlines."
-                                )
+st.caption(
+    "🎙️ VoiceNotes AI • "
+    "AI-powered Speech-to-Text & Action Item Extraction"
+                )
