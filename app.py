@@ -1,5 +1,5 @@
 import streamlit as st
-from groq import Groq
+from openai import OpenAI
 import os
 import json
 
@@ -94,7 +94,7 @@ if "transcript" not in st.session_state:
 # API KEY
 # ============================================================
 
-api_key = os.getenv("GROQ_API_KEY")
+api_key = os.getenv("OPENAI_API_KEY")
 
 
 # ============================================================
@@ -306,16 +306,16 @@ automatically identified.
         if not api_key:
 
             st.error(
-                "🔑 GROQ API key not configured. "
-                "Add GROQ_API_KEY to your deployment secrets."
+                "🔑 OpenAI API key not configured. "
+                "Add OPENAI_API_KEY to your deployment secrets."
             )
 
         else:
 
             try:
 
-                client = Groq(
-                    api_key=GROQ_API_KEY
+                client = OpenAI(
+                    api_key=api_key
                 )
 
 
@@ -329,7 +329,7 @@ automatically identified.
 
                     transcription = (
                         client.audio.transcriptions.create(
-                            model="whisper-large-v3-turbo",
+                            model="whisper-1",
                             file=audio_file
                         )
                     )
@@ -395,7 +395,7 @@ VOICE NOTE TRANSCRIPT:
                     response = (
                         client.chat.completions.create(
 
-                            model="llama-3.3-70b-versatile",
+                            model="gpt-4o-mini",
 
                             messages=[
                                 {
@@ -762,4 +762,4 @@ st.divider()
 st.caption(
     "🎙️ VoiceNotes AI • "
     "AI-powered Speech-to-Text & Action Item Extraction"
-)
+        )
