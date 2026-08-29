@@ -315,7 +315,7 @@ automatically identified.
             try:
 
                 client = Groq(
-                    api_key=GROQ_api_key
+                    api_key=GROQ_API_KEY
                 )
 
 
