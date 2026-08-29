@@ -1,1087 +1,386 @@
 import streamlit as st
 from groq import Groq
-import json
+import os
+import tempfile
 from datetime import datetime
 
-# ------------------------------------------------------------
-# Voice Notes -> Action Items
-# Groq Speech-to-Text + LLM Summary + Action Extraction
-# ------------------------------------------------------------
+
+# -------------------------------------------------
+# PAGE CONFIGURATION
+# -------------------------------------------------
 
 st.set_page_config(
-    page_title="VoiceNotes AI",
+    page_title="Voice Notes AI",
     page_icon="🎙️",
-    layout="wide",
-    initial_sidebar_state="collapsed",
+    layout="wide"
 )
 
-# --------------------------- STYLE ---------------------------
 
-st.markdown("""
-<style>
-    .block-container {
-        max-width: 1100px;
-        padding-top: 2rem;
-        padding-bottom: 3rem;
-    }
+# -------------------------------------------------
+# GET GROQ API KEY
+# -------------------------------------------------
 
-    .hero {
-        padding: 3rem 3.2rem;
-        border-radius: 28px;
-        background: linear-gradient(135deg, #1f4db7 0%, #6b2ccf 100%);
-        color: white;
-        margin-bottom: 2rem;
-        box-shadow: 0 12px 30px rgba(43, 55, 130, 0.18);
-    }
-
-    .hero h1 {
-        color: white;
-        font-size: 3.2rem;
-        line-height: 1.05;
-        margin-bottom: 1rem;
-    }
-
-    .hero p {
-        color: rgba(255,255,255,0.88);
-        font-size: 1.2rem;
-        max-width: 720px;
-    }
-
-    .section-title {
-        font-size: 1.8rem;
-        font-weight: 700;
-        margin-top: 1rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .feature-card {
-        padding: 1.5rem;
-        border: 1px solid rgba(49, 51, 63, 0.15);
-        border-radius: 18px;
-        min-height: 180px;
-        background: rgba(255,255,255,0.03);
-    }
-
-    .result-card {
-        padding: 1.5rem;
-        border-radius: 18px;
-        border: 1px solid rgba(49, 51, 63, 0.15);
-        margin-bottom: 1rem;
-        background: rgba(255,255,255,0.04);
-    }
-
-    .action-item {
-        padding: 0.85rem 1rem;
-        margin: 0.55rem 0;
-        border-left: 4px solid #6b2ccf;
-        border-radius: 8px;
-        background: rgba(107, 44, 207, 0.07);
-    }
-
-    .small-muted {
-        color: #6b7280;
-        font-size: 0.92rem;
-    }
-</style>
-""", unsafe_allow_html=True)
+def get_api_key():
+    try:
+        return st.secrets["GROQ_API_KEY"]
+    except Exception:
+        return os.getenv("GROQ_API_KEY")
 
 
-# ----------------------- INITIAL STATE -----------------------
+api_key = get_api_key()
+
+
+# -------------------------------------------------
+# APP HEADER
+# -------------------------------------------------
+
+st.title("🎙️ Voice Notes AI")
+st.subheader("AI-powered Speech-to-Text, Summaries & Action Items")
+
+st.write(
+    "Upload a voice note and let AI automatically convert it into text, "
+    "generate a summary, and identify important tasks and action items."
+)
+
+st.divider()
+
+
+# -------------------------------------------------
+# CHECK API KEY
+# -------------------------------------------------
+
+if not api_key:
+    st.error("Groq API key not found.")
+
+    st.info("""
+Add your API key in Streamlit Secrets using exactly:
+
+GROQ_API_KEY = "your_groq_api_key_here"
+""")
+
+    st.stop()
+
+
+# -------------------------------------------------
+# CREATE GROQ CLIENT
+# -------------------------------------------------
+
+try:
+    client = Groq(api_key=api_key)
+except Exception as e:
+    st.error(f"Unable to initialize Groq client: {e}")
+    st.stop()
+
+
+# -------------------------------------------------
+# SESSION STATE
+# -------------------------------------------------
 
 if "history" not in st.session_state:
     st.session_state.history = []
 
-if "last_result" not in st.session_state:
-    st.session_state.last_result = None
 
+# -------------------------------------------------
+# TABS
+# -------------------------------------------------
 
-# ------------------------- API CLIENT -------------------------
+tab1, tab2 = st.tabs([
+    "🎙️ Process Voice Note",
+    "📚 History"
+])
 
-def get_client():
-    """Create a Groq client using Streamlit Secrets."""
-    try:
-        api_key = st.secrets["GROQ_API_KEY"]
-    except Exception:
-        st.error(
-            "Groq API key not found. Add GROQ_API_KEY to Streamlit Secrets."
-        )
-        st.stop()
 
-    if not api_key or not str(api_key).strip():
-        st.error("Your GROQ_API_KEY is empty. Please check Streamlit Secrets.")
-        st.stop()
-
-    return Groq(api_key=str(api_key).strip())
-
-
-# ----------------------- AI FUNCTIONS ------------------------
-
-def transcribe_audio(client, audio_file, language=None):
-    """Convert uploaded/recorded audio to text using Groq Whisper."""
-
-    audio_bytes = audio_file.getvalue()
-
-    filename = getattr(audio_file, "name", None)
-
-    if not filename:
-        filename = "voice_note.wav"
-
-    kwargs = {
-        "file": (filename, audio_bytes),
-        "model": "whisper-large-v3-turbo",
-        "response_format": "json",
-        "temperature": 0.0,
-    }
-
-    if language and language != "Auto Detect":
-        kwargs["language"] = language
-
-    transcription = client.audio.transcriptions.create(**kwargs)
-
-    return transcription.text
-
-
-def analyze_transcript(client, transcript):
-    """Create summary, key points, action items and deadlines."""
-
-    prompt = f"""
-You are an intelligent meeting and voice-note assistant.
-
-Analyze the transcript below and return ONLY valid JSON.
-Do not include markdown or text outside the JSON.
-
-Transcript:
-{transcript}
-
-Use exactly this structure:
-
-{{
-  "title": "short descriptive title",
-  "summary": "clear concise paragraph summary",
-  "key_points": [
-    "point 1",
-    "point 2"
-  ],
-  "action_items": [
-    {{
-      "task": "specific action",
-      "owner": "person if mentioned, otherwise Unassigned",
-      "priority": "High, Medium, or Low",
-      "deadline": "deadline if mentioned, otherwise Not specified"
-    }}
-  ],
-  "deadlines": [
-    "deadline 1"
-  ],
-  "decisions": [
-    "decision 1"
-  ]
-}}
-
-Rules:
-
-- Extract only information supported by the transcript.
-- If there are no action items, return an empty list.
-- If no deadline is mentioned, return an empty deadlines list.
-- Make the summary professional and easy to read.
-"""
-
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You extract structured and accurate information "
-                    "from voice transcripts. Always return valid JSON."
-                ),
-            },
-
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
-
-        temperature=0.2,
-
-        response_format={
-            "type": "json_object"
-        },
-    )
-
-    content = completion.choices[0].message.content
-
-    return json.loads(content)
-
-
-# ---------------------- DISPLAY RESULTS ----------------------
-
-def display_results(transcript, analysis):
-
-    st.markdown("---")
-
-    st.markdown("## ✨ Your AI Results")
-
-    title = analysis.get(
-        "title",
-        "Voice Note Analysis"
-    )
-
-    summary = analysis.get(
-        "summary",
-        ""
-    )
-
-    st.markdown(f"### 📌 {title}")
-
-
-    # SUMMARY
-
-    st.markdown(
-        '<div class="result-card">',
-        unsafe_allow_html=True
-    )
-
-    st.markdown("### 📝 Smart Summary")
-
-    st.write(
-        summary or
-        "No summary generated."
-    )
-
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True
-    )
-
-
-    # KEY POINTS + DEADLINES
-
-    col1, col2 = st.columns(2)
-
-
-    with col1:
-
-        st.markdown(
-            '<div class="result-card">',
-            unsafe_allow_html=True
-        )
-
-        st.markdown("### 🔑 Key Points")
-
-        points = analysis.get(
-            "key_points",
-            []
-        )
-
-        if points:
-
-            for point in points:
-
-                st.markdown(
-                    f"- {point}"
-                )
-
-        else:
-
-            st.write(
-                "No key points identified."
-            )
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True
-        )
-
-
-    with col2:
-
-        st.markdown(
-            '<div class="result-card">',
-            unsafe_allow_html=True
-        )
-
-        st.markdown("### 📅 Deadlines")
-
-        deadlines = analysis.get(
-            "deadlines",
-            []
-        )
-
-        if deadlines:
-
-            for deadline in deadlines:
-
-                st.markdown(
-                    f"- {deadline}"
-                )
-
-        else:
-
-            st.write(
-                "No specific deadlines identified."
-            )
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True
-        )
-
-
-    # ACTION ITEMS
-
-    st.markdown(
-        '<div class="result-card">',
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        "### ✅ Action Items"
-    )
-
-    actions = analysis.get(
-        "action_items",
-        []
-    )
-
-    if actions:
-
-        for index, action in enumerate(
-            actions,
-            start=1
-        ):
-
-            task = action.get(
-                "task",
-                "Action item"
-            )
-
-            owner = action.get(
-                "owner",
-                "Unassigned"
-            )
-
-            priority = action.get(
-                "priority",
-                "Medium"
-            )
-
-            deadline = action.get(
-                "deadline",
-                "Not specified"
-            )
-
-
-            st.markdown(
-                f"""
-                <div class="action-item">
-
-                    <b>{index}. {task}</b><br>
-
-                    👤 Owner: {owner}<br>
-
-                    🎯 Priority: {priority}<br>
-
-                    📅 Deadline: {deadline}
-
-                </div>
-                """,
-
-                unsafe_allow_html=True
-            )
-
-    else:
-
-        st.write(
-            "No action items were identified."
-        )
-
-
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True
-    )
-
-
-    # DECISIONS
-
-    decisions = analysis.get(
-        "decisions",
-        []
-    )
-
-    if decisions:
-
-        st.markdown(
-            '<div class="result-card">',
-            unsafe_allow_html=True
-        )
-
-        st.markdown(
-            "### 🤝 Decisions"
-        )
-
-        for decision in decisions:
-
-            st.markdown(
-                f"- {decision}"
-            )
-
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True
-        )
-
-
-    # TRANSCRIPT
-
-    with st.expander(
-        "📄 View Full Transcript"
-    ):
-
-        st.text_area(
-            "Transcript",
-
-            value=transcript,
-
-            height=260,
-
-            key="transcript_display",
-        )
-
-
-    # DOWNLOAD
-
-    export_data = {
-
-        "transcript": transcript,
-
-        "analysis": analysis,
-
-    }
-
-
-    st.download_button(
-
-        "⬇️ Download Results as JSON",
-
-        data=json.dumps(
-            export_data,
-            indent=2,
-            ensure_ascii=False
-        ),
-
-        file_name="voice_notes_analysis.json",
-
-        mime="application/json",
-
-        use_container_width=True,
-
-    )
-
-
-# --------------------------- HERO ----------------------------
-
-st.markdown(
-"""
-<div class="hero">
-
-    <h1>
-        🎙️ Voice Notes →<br>
-        Action Items
-    </h1>
-
-    <p>
-        Transform your voice notes into accurate transcripts,
-        clear summaries, actionable tasks and important deadlines.
-    </p>
-
-</div>
-""",
-
-unsafe_allow_html=True
-)
-
-
-# --------------------------- TABS ----------------------------
-
-tab1, tab2 = st.tabs(
-
-    [
-        "🎙️ Process Voice Note",
-        "📚 History"
-    ]
-
-)
-
-
-# ------------------------- PROCESS TAB -----------------------
+# =================================================
+# PROCESS VOICE NOTE TAB
+# =================================================
 
 with tab1:
 
+    st.header("🎤 Add Your Voice Note")
 
-    st.markdown(
-
-        '<div class="section-title">'
-        '🎙️ Add Your Voice Note'
-        '</div>',
-
-        unsafe_allow_html=True
-
+    st.write(
+        "Upload an audio file and Voice Notes AI will transcribe "
+        "and analyze it automatically."
     )
 
-
-    st.caption(
-
-        "Upload an audio file or record a new "
-        "voice note directly in the app."
-
+    uploaded_file = st.file_uploader(
+        "Upload Audio File",
+        type=[
+            "mp3",
+            "wav",
+            "m4a",
+            "ogg",
+            "webm",
+            "mp4",
+            "mpeg",
+            "mpga"
+        ]
     )
 
+    if uploaded_file is not None:
 
-    input_method = st.radio(
+        st.success(f"Audio uploaded: {uploaded_file.name}")
 
-        "Choose input method",
+        st.audio(uploaded_file)
 
-        [
-            "📁 Upload Audio",
-            "🎤 Record Audio"
-        ],
-
-        horizontal=True,
-
-    )
-
-
-    language = st.selectbox(
-
-        "Spoken language",
-
-        [
-
-            "Auto Detect",
-
-            "en",
-
-            "hi",
-
-            "mr",
-
-            "te",
-
-            "ta",
-
-            "kn",
-
-            "bn",
-
-        ],
-
-        help=(
-            "Choose Auto Detect "
-            "if you are unsure."
-        ),
-
-    )
-
-
-    audio_file = None
-
-
-    # UPLOAD AUDIO
-
-    if input_method == "📁 Upload Audio":
-
-        audio_file = st.file_uploader(
-
-            "Upload an audio file",
-
-            type=[
-
-                "mp3",
-
-                "wav",
-
-                "m4a",
-
-                "ogg",
-
-                "webm",
-
-                "mp4",
-
-                "mpeg",
-
-            ],
-
-            help=(
-                "Supported: MP3, WAV, M4A, "
-                "OGG and WEBM."
-            ),
-
+        process_button = st.button(
+            "✨ Process Voice Note",
+            use_container_width=True
         )
 
+        if process_button:
 
-    # RECORD AUDIO
-
-    else:
-
-        audio_file = st.audio_input(
-
-            "Record your voice note"
-
-        )
-
-
-    # PROCESS AUDIO
-
-    if audio_file is not None:
-
-
-        st.audio(
-            audio_file
-        )
-
-
-        if st.button(
-
-            "🚀 Transcribe & Analyze",
-
-            type="primary",
-
-            use_container_width=True,
-
-        ):
-
+            temp_path = None
 
             try:
 
+                # -----------------------------------------
+                # SAVE TEMPORARY AUDIO FILE
+                # -----------------------------------------
 
-                client = get_client()
+                suffix = os.path.splitext(uploaded_file.name)[1]
+
+                with tempfile.NamedTemporaryFile(
+                    delete=False,
+                    suffix=suffix
+                ) as temp_file:
+
+                    temp_file.write(uploaded_file.getvalue())
+                    temp_path = temp_file.name
 
 
-                progress = st.progress(
+                # -----------------------------------------
+                # SPEECH RECOGNITION
+                # -----------------------------------------
 
-                    0,
+                with st.spinner("🎧 Converting speech to text..."):
 
-                    text=(
-                        "Preparing your voice note..."
+                    with open(temp_path, "rb") as audio_file:
+
+                        transcription = (
+                            client.audio.transcriptions.create(
+                                file=(
+                                    uploaded_file.name,
+                                    audio_file.read()
+                                ),
+                                model="whisper-large-v3-turbo",
+                                response_format="json"
+                            )
+                        )
+
+                    transcript = transcription.text
+
+
+                st.success("Speech converted successfully!")
+
+
+                # -----------------------------------------
+                # DISPLAY TRANSCRIPT
+                # -----------------------------------------
+
+                st.divider()
+
+                st.header("📝 Speech Recognition")
+
+                st.text_area(
+                    "Transcript",
+                    value=transcript,
+                    height=250
+                )
+
+
+                # -----------------------------------------
+                # AI ANALYSIS
+                # -----------------------------------------
+
+                with st.spinner(
+                    "🤖 AI is analyzing your voice note..."
+                ):
+
+                    prompt = f"""
+You are an intelligent assistant that analyzes voice notes.
+
+Analyze the following transcript carefully.
+
+TRANSCRIPT:
+{transcript}
+
+Return the answer using exactly these sections:
+
+## 📌 Summary
+Write a clear and concise summary.
+
+## 🎯 Key Points
+List the most important points using bullet points.
+
+## ✅ Action Items
+Extract all tasks or actions.
+
+For every action item include:
+- Task
+- Priority: High, Medium, or Low
+- Owner if mentioned
+- Deadline if mentioned
+
+If information is not mentioned, write "Not specified".
+
+Do not invent information that is not present in the transcript.
+"""
+
+
+                    completion = (
+                        client.chat.completions.create(
+                            model="llama-3.3-70b-versatile",
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "You are an expert assistant "
+                                        "for analyzing meeting notes "
+                                        "and voice transcripts."
+                                    )
+                                },
+                                {
+                                    "role": "user",
+                                    "content": prompt
+                                }
+                            ],
+                            temperature=0.3,
+                            max_tokens=2000
+                        )
                     )
 
-                )
-
-
-                progress.progress(
-
-                    25,
-
-                    text=(
-                        "Converting speech to text..."
-                    )
-
-                )
-
-
-                transcript = transcribe_audio(
-
-                    client,
-
-                    audio_file,
-
-                    language=language,
-
-                )
-
-
-                if not transcript or not transcript.strip():
-
-                    raise ValueError(
-
-                        "No speech could be detected "
-                        "in the audio."
-
+                    analysis = (
+                        completion
+                        .choices[0]
+                        .message
+                        .content
                     )
 
 
-                progress.progress(
+                # -----------------------------------------
+                # DISPLAY ANALYSIS
+                # -----------------------------------------
 
-                    60,
+                st.divider()
 
-                    text=(
-                        "AI is understanding "
-                        "the transcript..."
-                    )
+                st.header("🤖 AI Understanding")
 
-                )
-
-
-                analysis = analyze_transcript(
-
-                    client,
-
-                    transcript
-
-                )
+                st.markdown(analysis)
 
 
-                progress.progress(
-
-                    100,
-
-                    text=(
-                        "Completed successfully!"
-                    )
-
-                )
-
-
-                st.session_state.last_result = {
-
-                    "transcript": transcript,
-
-                    "analysis": analysis,
-
-                    "created_at": datetime.now().strftime(
-
-                        "%d %b %Y, %I:%M %p"
-
-                    ),
-
-                }
-
+                # -----------------------------------------
+                # SAVE HISTORY
+                # -----------------------------------------
 
                 st.session_state.history.insert(
-
                     0,
-
-                    st.session_state.last_result,
-
+                    {
+                        "filename": uploaded_file.name,
+                        "date": datetime.now().strftime(
+                            "%d %B %Y, %I:%M %p"
+                        ),
+                        "transcript": transcript,
+                        "analysis": analysis
+                    }
                 )
 
 
-                display_results(
+                # -----------------------------------------
+                # DOWNLOAD RESULTS
+                # -----------------------------------------
 
-                    transcript,
+                st.divider()
 
-                    analysis
+                st.header("📥 Download Results")
 
+                result_text = f"""
+VOICE NOTES AI REPORT
+
+File: {uploaded_file.name}
+
+========================
+TRANSCRIPT
+========================
+
+{transcript}
+
+========================
+AI ANALYSIS
+========================
+
+{analysis}
+"""
+
+
+                st.download_button(
+                    label="⬇️ Download Report",
+                    data=result_text,
+                    file_name="voice_notes_ai_report.txt",
+                    mime="text/plain",
+                    use_container_width=True
                 )
 
 
-            except Exception as error:
+            except Exception as e:
 
+                st.error("Processing error occurred.")
 
-                error_text = str(error)
+                st.exception(e)
 
 
-                if (
+            finally:
 
-                    "credit_balance_exhausted"
-                    in error_text
+                if temp_path is not None:
 
-                    or
+                    try:
+                        os.remove(temp_path)
 
-                    "no credits"
-                    in error_text.lower()
+                    except Exception:
+                        pass
 
-                ):
 
-
-                    st.error(
-
-                        "Groq API request failed "
-                        "because your API account "
-                        "has no available credits "
-                        "or quota."
-
-                    )
-
-
-                elif (
-
-                    "api_key"
-                    in error_text.lower()
-
-                    or
-
-                    "authentication"
-                    in error_text.lower()
-
-                ):
-
-
-                    st.error(
-
-                        "Groq API authentication failed. "
-                        "Please check that your "
-                        "GROQ_API_KEY in Streamlit Secrets "
-                        "is correct."
-
-                    )
-
-
-                else:
-
-
-                    st.error(
-
-                        f"Processing error: {error_text}"
-
-                    )
-
-
-    else:
-
-
-        st.info(
-
-            "Upload or record a voice note "
-            "to begin."
-
-        )
-
-
-    # AI PROCESSING SECTION
-
-    st.markdown("---")
-
-    st.markdown(
-        "## 🤖 AI Processing"
-    )
-
-
-    c1, c2, c3 = st.columns(3)
-
-
-    with c1:
-
-        st.markdown(
-
-        """
-        <div class="feature-card">
-
-            <h3>
-                1️⃣ Speech Recognition
-            </h3>
-
-            <p>
-                Your voice is converted
-                into an accurate text
-                transcript.
-            </p>
-
-        </div>
-        """,
-
-        unsafe_allow_html=True
-
-        )
-
-
-    with c2:
-
-        st.markdown(
-
-        """
-        <div class="feature-card">
-
-            <h3>
-                2️⃣ AI Understanding
-            </h3>
-
-            <p>
-                The AI identifies important
-                information and context.
-            </p>
-
-        </div>
-        """,
-
-        unsafe_allow_html=True
-
-        )
-
-
-    with c3:
-
-        st.markdown(
-
-        """
-        <div class="feature-card">
-
-            <h3>
-                3️⃣ Smart Extraction
-            </h3>
-
-            <p>
-                Tasks, priorities, owners
-                and deadlines are automatically
-                identified.
-            </p>
-
-        </div>
-        """,
-
-        unsafe_allow_html=True
-
-        )
-
-
-# ------------------------- HISTORY TAB -----------------------
+# =================================================
+# HISTORY TAB
+# =================================================
 
 with tab2:
 
+    st.header("📚 Processing History")
 
-    st.markdown(
-
-        '<div class="section-title">'
-        '📚 Processing History'
-        '</div>',
-
-        unsafe_allow_html=True
-
-    )
-
-
-    if not st.session_state.history:
-
+    if len(st.session_state.history) == 0:
 
         st.info(
-
-            "Your processed voice notes "
-            "will appear here during "
-            "this session."
-
+            "No voice notes processed yet. "
+            "Upload an audio file in the Process Voice Note tab."
         )
-
 
     else:
 
-
         for index, item in enumerate(
-
             st.session_state.history
-
         ):
-
-
-            analysis = item["analysis"]
-
-
-            title = analysis.get(
-
-                "title",
-
-                "Voice Note"
-
-            )
-
-
-            created_at = item.get(
-
-                "created_at",
-
-                ""
-
-            )
-
 
             with st.expander(
-
-                f"📝 {title} — {created_at}"
-
+                f"🎙️ {item['filename']} — {item['date']}"
             ):
 
+                st.subheader("📝 Transcript")
 
-                st.markdown(
-                    "### Summary"
-                )
+                st.write(item["transcript"])
 
+                st.subheader("🤖 AI Analysis")
 
-                st.write(
-
-                    analysis.get(
-                        "summary",
-                        ""
-                    )
-
-                )
+                st.markdown(item["analysis"])
 
 
-                st.markdown(
-                    "### Action Items"
-                )
+# -------------------------------------------------
+# FOOTER
+# -------------------------------------------------
 
+st.divider()
 
-                actions = analysis.get(
-
-                    "action_items",
-
-                    []
-
-                )
-
-
-                if actions:
-
-
-                    for action in actions:
-
-
-                        st.markdown(
-
-                            f"- **{action.get('task', 'Task')}** "
-                            f"({action.get('priority', 'Medium')} "
-                            f"priority)"
-
-                        )
-
-
-                else:
-
-
-                    st.write(
-                        "No action items."
-                    )
-
-
-                with st.expander(
-                    "View Transcript"
-                ):
-
-
-                    st.write(
-                        item["transcript"]
-                    )
-
-
-        if st.button(
-            "🗑️ Clear History"
-        ):
-
-
-            st.session_state.history = []
-
-
-            st.rerun()
-
-
-# --------------------------- FOOTER --------------------------
-
-st.markdown("---")
-
-st.markdown(
-
-    """
-    <p class='small-muted'>
-        🎙️ VoiceNotes AI •
-        AI-powered Speech-to-Text,
-        Summaries & Action Item Extraction
-    </p>
-    """,
-
-    unsafe_allow_html=True
-
-    )
+st.caption(
+    "🎙️ Voice Notes AI • AI-powered Speech-to-Text, "
+    "Summaries & Action Item Extraction"
+)
