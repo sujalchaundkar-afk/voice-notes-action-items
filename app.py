@@ -329,7 +329,7 @@ automatically identified.
 
                     transcription = (
                         client.audio.transcriptions.create(
-                            model="whisper-1",
+                            model="whisper-large-v3-turbo",
                             file=audio_file
                         )
                     )
