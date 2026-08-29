@@ -1,6 +1,7 @@
 import streamlit as st
 from openai import OpenAI
 import os
+import json
 
 # Page configuration
 st.set_page_config(
@@ -9,15 +10,27 @@ st.set_page_config(
     layout="wide"
 )
 
+# -----------------------------
+# PAGE HEADER
+# -----------------------------
+
 st.title("🎙️ Voice Notes → Action Items")
-st.subheader("Turn your voice notes into summaries and actionable tasks using AI")
+st.subheader(
+    "Turn your voice notes into summaries, tasks, and deadlines using AI"
+)
 
 st.divider()
 
-# API key check
+# -----------------------------
+# API KEY
+# -----------------------------
+
 api_key = os.getenv("OPENAI_API_KEY")
 
-# Audio Input
+# -----------------------------
+# AUDIO INPUT
+# -----------------------------
+
 st.header("🎤 Upload or Record Your Voice Note")
 
 uploaded_file = st.file_uploader(
@@ -25,95 +38,304 @@ uploaded_file = st.file_uploader(
     type=["mp3", "wav", "m4a", "ogg"]
 )
 
-audio_value = st.audio_input("Or record a voice note")
+audio_value = st.audio_input(
+    "Or record a voice note"
+)
 
-# Select audio source
 audio_file = uploaded_file if uploaded_file else audio_value
 
+
+# -----------------------------
+# AUDIO PROCESSING
+# -----------------------------
+
 if audio_file:
+
     st.audio(audio_file)
 
-    if st.button("✨ Process Voice Note", use_container_width=True):
+    if st.button(
+        "✨ Process Voice Note",
+        use_container_width=True
+    ):
 
         if not api_key:
+
             st.error(
-                "OpenAI API key not found. Add OPENAI_API_KEY to your .env file."
+                "OpenAI API key not found. "
+                "Configure OPENAI_API_KEY in your deployment secrets."
             )
 
         else:
+
             try:
-                client = OpenAI(api_key=api_key)
 
-                with st.spinner("🗣️ Converting speech to text..."):
+                client = OpenAI(
+                    api_key=api_key
+                )
 
-                    transcription = client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=audio_file
+                # -----------------------------
+                # SPEECH TO TEXT
+                # -----------------------------
+
+                with st.spinner(
+                    "🗣️ Converting speech to text..."
+                ):
+
+                    transcription = (
+                        client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=audio_file
+                        )
                     )
 
                 transcript = transcription.text
 
-                st.success("Speech converted successfully!")
+                st.success(
+                    "Voice note processed successfully!"
+                )
 
-                # Display transcript
-                st.subheader("📝 Transcript")
-                st.write(transcript)
+                # -----------------------------
+                # TRANSCRIPT
+                # -----------------------------
+
+                st.subheader(
+                    "📝 Transcript"
+                )
+
+                st.info(
+                    transcript
+                )
 
                 st.divider()
 
-                # AI processing
-                with st.spinner("🤖 AI is analyzing your voice note..."):
+                # -----------------------------
+                # AI ANALYSIS
+                # -----------------------------
+
+                with st.spinner(
+                    "🤖 AI is analyzing your voice note..."
+                ):
 
                     prompt = f"""
-                    Analyze the following voice note transcript.
+Analyze the following voice note transcript.
 
-                    Provide:
-                    1. A short and clear summary.
-                    2. A list of action items.
-                    3. Any deadlines or dates mentioned.
+Return ONLY valid JSON.
 
-                    Transcript:
-                    {transcript}
-                    """
+Use exactly this structure:
 
-                    response = client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": (
-                                    "You extract useful information from voice notes "
-                                    "and return clear, structured results."
-                                )
-                            },
-                            {
-                                "role": "user",
-                                "content": prompt
-                            }
-                        ]
+{{
+    "summary": "Short clear summary",
+
+    "action_items": [
+        {{
+            "task": "Task description",
+            "deadline": "Deadline if mentioned, otherwise Not specified",
+            "priority": "High, Medium, or Low"
+        }}
+    ],
+
+    "deadlines": [
+        "List all deadlines or dates mentioned"
+    ]
+}}
+
+Rules:
+
+1. Create a short and useful summary.
+2. Extract all actionable tasks.
+3. Detect dates, deadlines, and time references.
+4. Assign a reasonable priority to each task.
+5. Do not include markdown.
+6. Return only valid JSON.
+
+Transcript:
+
+{transcript}
+"""
+
+                    response = (
+                        client.chat.completions.create(
+
+                            model="gpt-4o-mini",
+
+                            messages=[
+                                {
+                                    "role": "system",
+
+                                    "content": (
+                                        "You are an AI assistant that "
+                                        "analyzes voice notes and extracts "
+                                        "structured action items."
+                                    )
+                                },
+
+                                {
+                                    "role": "user",
+
+                                    "content": prompt
+                                }
+                            ]
+                        )
                     )
 
-                result = response.choices[0].message.content
+                result = (
+                    response
+                    .choices[0]
+                    .message
+                    .content
+                )
 
-                st.subheader("🤖 AI Analysis")
-                st.write(result)
+                data = json.loads(
+                    result
+                )
+
+                # -----------------------------
+                # SUMMARY
+                # -----------------------------
+
+                st.subheader(
+                    "✨ AI Summary"
+                )
+
+                st.success(
+                    data.get(
+                        "summary",
+                        "No summary available."
+                    )
+                )
+
+                # -----------------------------
+                # ACTION ITEMS
+                # -----------------------------
+
+                st.subheader(
+                    "✅ Action Items"
+                )
+
+                action_items = data.get(
+                    "action_items",
+                    []
+                )
+
+                if action_items:
+
+                    for index, item in enumerate(
+                        action_items,
+                        start=1
+                    ):
+
+                        with st.container(
+                            border=True
+                        ):
+
+                            st.markdown(
+                                f"### {index}. {item.get('task')}"
+                            )
+
+                            col1, col2 = st.columns(2)
+
+                            with col1:
+
+                                st.write(
+                                    "📅 **Deadline:** "
+                                    f"{item.get('deadline')}"
+                                )
+
+                            with col2:
+
+                                st.write(
+                                    "⚡ **Priority:** "
+                                    f"{item.get('priority')}"
+                                )
+
+                else:
+
+                    st.info(
+                        "No action items detected."
+                    )
+
+                # -----------------------------
+                # DEADLINES
+                # -----------------------------
+
+                st.subheader(
+                    "📅 Important Dates & Deadlines"
+                )
+
+                deadlines = data.get(
+                    "deadlines",
+                    []
+                )
+
+                if deadlines:
+
+                    for deadline in deadlines:
+
+                        st.write(
+                            f"📌 {deadline}"
+                        )
+
+                else:
+
+                    st.info(
+                        "No deadlines mentioned."
+                    )
+
+
+            except json.JSONDecodeError:
+
+                st.error(
+                    "AI returned an unexpected format. "
+                    "Please try again."
+                )
+
 
             except Exception as e:
-                st.error(f"Error processing audio: {str(e)}")
+
+                st.error(
+                    f"Error processing voice note: {str(e)}"
+                )
+
+
+# -----------------------------
+# PROJECT FEATURES
+# -----------------------------
 
 st.divider()
 
-# Features section
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.subheader("🗣️ Speech to Text")
-    st.write("Convert your voice note into an accurate transcript.")
+
+    st.subheader(
+        "🗣️ Speech to Text"
+    )
+
+    st.write(
+        "Convert voice notes into "
+        "accurate transcripts."
+    )
+
 
 with col2:
-    st.subheader("✨ AI Summary")
-    st.write("Get a clear and concise summary of your voice note.")
+
+    st.subheader(
+        "✨ AI Summary"
+    )
+
+    st.write(
+        "Understand long voice notes "
+        "quickly with concise summaries."
+    )
+
 
 with col3:
-    st.subheader("✅ Action Items")
-    st.write("Automatically extract important tasks and next steps.")
+
+    st.subheader(
+        "✅ Action Items"
+    )
+
+    st.write(
+        "Automatically extract tasks, "
+        "priorities, and deadlines."
+                                )
