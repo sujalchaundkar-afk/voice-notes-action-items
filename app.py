@@ -314,8 +314,8 @@ automatically identified.
 
             try:
 
-                client = GROQ(
-                    api_key=api_key
+                client = Groq(
+                    api_key=GROQ_api_key
                 )
 
 
