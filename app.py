@@ -94,7 +94,7 @@ if "transcript" not in st.session_state:
 # API KEY
 # ============================================================
 
-api_key = os.getenv("OPENAI_API_KEY")
+api_key = os.getenv("GROQ_API_KEY")
 
 
 # ============================================================
@@ -306,15 +306,15 @@ automatically identified.
         if not api_key:
 
             st.error(
-                "🔑 OpenAI API key not configured. "
-                "Add OPENAI_API_KEY to your deployment secrets."
+                "🔑 GROQ API key not configured. "
+                "Add GROQ_API_KEY to your deployment secrets."
             )
 
         else:
 
             try:
 
-                client = OpenAI(
+                client = GROQ(
                     api_key=api_key
                 )
 
