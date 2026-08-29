@@ -1,5 +1,5 @@
 import streamlit as st
-from openai import OpenAI
+from groq import groq
 import os
 import json
 
