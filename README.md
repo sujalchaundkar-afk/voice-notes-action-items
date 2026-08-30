@@ -49,6 +49,17 @@ Voice Notes → Action Items helps users turn conversations, meetings, lectures,
 
 ---
 
+
+## ⚙️ Run Locally
+
+To run **Voice Notes → Action Items** locally, create a virtual environment, activate it, install the required dependencies, configure your OpenAI API key, and start the Streamlit application:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py
+
 ## 🧠 How It Works
 
 ```text
