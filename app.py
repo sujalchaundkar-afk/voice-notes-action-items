@@ -1,7 +1,8 @@
 import streamlit as st
-from openai import OpenAI
+from google import genai
 import os
 import json
+import tempfile 
 
 
 # ============================================================
@@ -94,7 +95,7 @@ if "transcript" not in st.session_state:
 # API KEY
 # ============================================================
 
-api_key = os.getenv("OPENAI_API_KEY")
+api_key = os.getenv("GEMINI_API_KEY")
 
 
 # ============================================================
@@ -306,15 +307,15 @@ automatically identified.
         if not api_key:
 
             st.error(
-                "🔑 OpenAI API key not configured. "
-                "Add OPENAI_API_KEY to your deployment secrets."
+                "🔑 GEMINI API key not configured. "
+                "Add GEMINI_API_KEY to your deployment secrets."
             )
 
         else:
 
             try:
 
-                client = OpenAI(
+                client = genai(
                     api_key=api_key
                 )
 
@@ -327,14 +328,37 @@ automatically identified.
                     "🗣️ Converting your voice into text..."
                 ):
 
-                    transcription = (
-                        client.audio.transcriptions.create(
-                            model="whisper-1",
-                            file=audio_file
-                        )
-                    )
+                    with st.spinner("🎙️ Converting your voice into text..."):
 
-                transcript = transcription.text
+    # Save uploaded audio temporarily
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".mp3"
+    ) as temp_audio:
+
+        temp_audio.write(audio_file.getvalue())
+        temp_audio_path = temp_audio.name
+
+    # Upload audio to Gemini
+    uploaded_audio = client.files.upload(
+        file=temp_audio_path
+    )
+
+    # Convert speech to text
+    transcription_response = client.models.generate_content(
+        model="gemini-3.5-transcribe",
+        contents=[
+            uploaded_audio
+        ]
+    )
+
+    transcript = transcription_response.text
+
+    # Save transcript
+    st.session_state.transcript = transcript
+
+    # Delete temporary file
+    os.remove(temp_audio_path)
 
                 st.session_state.transcript = transcript
 
@@ -392,30 +416,12 @@ VOICE NOTE TRANSCRIPT:
 {transcript}
 """
 
-                    response = (
-                        client.chat.completions.create(
+                    response = client.models.generate_content(
+    model="gemini-3.7-flash",
+    contents=prompt
+)
 
-                            model="gpt-4o-mini",
-
-                            messages=[
-                                {
-                                    "role": "system",
-
-                                    "content": (
-                                        "You are an AI productivity "
-                                        "assistant that converts voice "
-                                        "notes into structured tasks."
-                                    )
-                                },
-
-                                {
-                                    "role": "user",
-
-                                    "content": prompt
-                                }
-                            ]
-                        )
-                    )
+result = response.text
 
 
                 result_text = (
