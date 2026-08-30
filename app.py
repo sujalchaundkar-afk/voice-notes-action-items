@@ -1,5 +1,6 @@
 import streamlit as st
-from openai import OpenAI
+from google import genai
+from google.genai import types
 import os
 import json
 
@@ -94,7 +95,7 @@ if "transcript" not in st.session_state:
 # API KEY
 # ============================================================
 
-api_key = os.getenv("OPENAI_API_KEY")
+api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
 
 # ============================================================
@@ -141,7 +142,7 @@ with st.sidebar:
     st.divider()
 
     st.caption(
-        "Built with Streamlit + Speech-to-Text + AI"
+        "Built with Streamlit + Gemini API"
     )
 
 
@@ -274,24 +275,21 @@ with tab1:
         st.markdown("""
 <div class="feature-card">
 
-### 1️⃣ Speech Recognition
+### 1️⃣ Audio Input
 
-Your voice is converted into an accurate
-text transcript.
+Your audio is uploaded directly to Gemini's multimodal engine.
 
 <br>
 
-### 2️⃣ AI Understanding
+### 2️⃣ Speech & Context Understanding
 
-The AI understands the meaning and
-important information.
+Gemini transcribes speech and extracts semantic intent in one unified pass.
 
 <br>
 
 ### 3️⃣ Smart Extraction
 
-Tasks, priorities and deadlines are
-automatically identified.
+Tasks, priorities, deadlines, and key people are extracted into JSON.
 
 </div>
 """, unsafe_allow_html=True)
@@ -306,141 +304,90 @@ automatically identified.
         if not api_key:
 
             st.error(
-                "🔑 OpenAI API key not configured. "
-                "Add OPENAI_API_KEY to your deployment secrets."
+                "🔑 Gemini API key not configured. "
+                "Add GEMINI_API_KEY to your deployment secrets."
             )
 
         else:
 
             try:
 
-                client = OpenAI(
-                    api_key=api_key
-                )
+                client = genai.Client(api_key=api_key)
 
-
-                # =================================================
-                # SPEECH TO TEXT
-                # =================================================
-
-                with st.spinner(
-                    "🗣️ Converting your voice into text..."
-                ):
-
-                    transcription = (
-                        client.audio.transcriptions.create(
-                            model="whisper-1",
-                            file=audio_file
-                        )
-                    )
-
-                transcript = transcription.text
-
-                st.session_state.transcript = transcript
-
+                # Determine media type based on uploaded format
+                mime_type = audio_file.type if hasattr(audio_file, "type") and audio_file.type else "audio/wav"
 
                 # =================================================
-                # AI ANALYSIS
+                # SPEECH PROCESSING & AI ANALYSIS (ONE STEP)
                 # =================================================
 
                 with st.spinner(
-                    "🤖 AI is finding tasks and deadlines..."
+                    "🤖 Gemini is transcribing audio, finding tasks, and detecting deadlines..."
                 ):
 
-                    prompt = f"""
-Analyze this voice note transcript.
+                    audio_bytes = audio_file.read()
 
-Return ONLY valid JSON.
+                    prompt = """
+Analyze this voice note.
 
-Use this exact structure:
+Perform two tasks:
+1. Provide a verbatim or near-exact transcription of the spoken audio.
+2. Extract tasks, deadlines, priorities, key people, and a summary.
 
-{{
+Return ONLY valid JSON in this exact structure:
+
+{
+    "transcript": "Full transcription of the spoken audio",
     "summary": "A short and clear summary",
-
     "action_items": [
-        {{
+        {
             "task": "Description of the task",
             "deadline": "Deadline or Not specified",
             "priority": "High, Medium, or Low"
-        }}
+        }
     ],
-
     "deadlines": [
         "Deadline 1",
         "Deadline 2"
     ],
-
     "key_people": [
         "Names of people mentioned"
     ]
-}}
+}
 
 Instructions:
-
 - Extract every actionable task.
 - Identify deadlines and dates.
-- Assign High, Medium or Low priority.
+- Assign High, Medium, or Low priority.
 - Create a concise summary.
 - Identify important people mentioned.
-- If information is unavailable,
-  return an empty list where appropriate.
-- Return ONLY valid JSON.
-- Do not use markdown.
-
-VOICE NOTE TRANSCRIPT:
-
-{transcript}
+- If information is unavailable, return an empty list where appropriate.
 """
 
-                    response = (
-                        client.chat.completions.create(
-
-                            model="gpt-4o-mini",
-
-                            messages=[
-                                {
-                                    "role": "system",
-
-                                    "content": (
-                                        "You are an AI productivity "
-                                        "assistant that converts voice "
-                                        "notes into structured tasks."
-                                    )
-                                },
-
-                                {
-                                    "role": "user",
-
-                                    "content": prompt
-                                }
-                            ]
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=[
+                            types.Part.from_bytes(
+                                data=audio_bytes,
+                                mime_type=mime_type,
+                            ),
+                            prompt
+                        ],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            system_instruction=(
+                                "You are an AI productivity assistant that "
+                                "converts voice notes into structured tasks."
+                            )
                         )
                     )
 
+                result_text = response.text.strip()
 
-                result_text = (
-                    response
-                    .choices[0]
-                    .message
-                    .content
-                )
+                data = json.loads(result_text)
 
-
-                # =================================================
-                # CLEAN JSON RESPONSE
-                # =================================================
-
-                result_text = (
-                    result_text
-                    .replace("```json", "")
-                    .replace("```", "")
-                    .strip()
-                )
-
-                data = json.loads(
-                    result_text
-                )
-
+                transcript = data.get("transcript", "Transcription unavailable.")
+                st.session_state.transcript = transcript
 
                 # =================================================
                 # SAVE RESULT
@@ -450,16 +397,8 @@ VOICE NOTE TRANSCRIPT:
 
                 st.session_state.history.append({
                     "transcript": transcript,
-                    "summary": data.get(
-                        "summary",
-                        ""
-                    ),
-                    "action_count": len(
-                        data.get(
-                            "action_items",
-                            []
-                        )
-                    )
+                    "summary": data.get("summary", ""),
+                    "action_count": len(data.get("action_items", []))
                 })
 
                 st.success(
@@ -762,4 +701,4 @@ st.divider()
 st.caption(
     "🎙️ VoiceNotes AI • "
     "AI-powered Speech-to-Text & Action Item Extraction"
-        )
+)
