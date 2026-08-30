@@ -324,11 +324,7 @@ automatically identified.
                 # SPEECH TO TEXT
                 # =================================================
 
-                with st.spinner(
-                    "🗣️ Converting your voice into text..."
-                ):
-
-                    with st.spinner("🎙️ Converting your voice into text..."):
+                with st.spinner("🎙️ Processing your audio..."):
 
     # Save uploaded audio temporarily
     with tempfile.NamedTemporaryFile(
