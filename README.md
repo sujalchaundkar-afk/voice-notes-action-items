@@ -34,3 +34,4 @@ Make sure you have Python 3.9 or higher installed. You will also need a **Gemini
 ```bash
 git clone [https://github.com/sujalchaundkar-afk/voice-notes-action-items.git](https://github.com/sujalchaundkar-afk/voice-notes-action-items.git)
 cd voice-notes-action-items
+
