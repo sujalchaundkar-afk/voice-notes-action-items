@@ -1,19 +1,15 @@
 import streamlit as st
+from openai import OpenAI
 import os
 import json
-import tempfile
-from pathlib import Path
-from datetime import datetime
-
-from google import genai
 
 
 # ============================================================
-# PAGE CONFIG
+# PAGE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
-    page_title="Voice Notes → Action Items",
+    page_title="VoiceNotes AI",
     page_icon="🎙️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -27,270 +23,54 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-/* Main application */
-.stApp {
-    background:
-        radial-gradient(circle at top left, rgba(99, 102, 241, 0.20), transparent 35%),
-        radial-gradient(circle at top right, rgba(168, 85, 247, 0.15), transparent 30%),
-        #0b1020;
-    color: white;
-}
+    .main {
+        background-color: #f8fafc;
+    }
 
-/* Remove Streamlit default spacing */
-.block-container {
-    max-width: 1250px;
-    padding-top: 2rem;
-    padding-bottom: 3rem;
-}
+    .hero {
+        padding: 2rem;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #2563eb, #7c3aed);
+        color: white;
+        margin-bottom: 2rem;
+    }
 
-/* Hide Streamlit branding */
-#MainMenu {
-    visibility: hidden;
-}
+    .hero h1 {
+        color: white;
+        margin-bottom: 0.5rem;
+    }
 
-footer {
-    visibility: hidden;
-}
+    .hero p {
+        font-size: 18px;
+        opacity: 0.9;
+    }
 
-header {
-    background: transparent !important;
-}
+    .section-title {
+        font-size: 24px;
+        font-weight: 700;
+        margin-top: 10px;
+        margin-bottom: 15px;
+    }
 
+    .feature-card {
+        padding: 20px;
+        border-radius: 15px;
+        background: white;
+        border: 1px solid #e5e7eb;
+        min-height: 170px;
+    }
 
-/* ============================================================
-   HERO SECTION
-============================================================ */
+    .task-card {
+        padding: 15px;
+        border-radius: 15px;
+        background: white;
+        border: 1px solid #e5e7eb;
+        margin-bottom: 12px;
+    }
 
-.hero {
-    padding: 35px;
-    border-radius: 25px;
-    background:
-        linear-gradient(
-            135deg,
-            rgba(79, 70, 229, 0.30),
-            rgba(147, 51, 234, 0.20)
-        );
-    border: 1px solid rgba(255,255,255,0.12);
-    margin-bottom: 25px;
-    box-shadow: 0px 20px 60px rgba(0,0,0,0.25);
-}
-
-.pill {
-    display: inline-block;
-    padding: 8px 16px;
-    border-radius: 999px;
-    background: rgba(99,102,241,0.18);
-    border: 1px solid rgba(129,140,248,0.35);
-    color: #c7d2fe;
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 18px;
-}
-
-.hero h1 {
-    font-size: 46px;
-    line-height: 1.1;
-    margin-bottom: 15px;
-    color: white;
-}
-
-.hero p {
-    color: #cbd5e1;
-    font-size: 18px;
-    line-height: 1.7;
-    max-width: 750px;
-}
-
-
-/* ============================================================
-   CARDS
-============================================================ */
-
-.card {
-    padding: 25px;
-    border-radius: 22px;
-    background: rgba(15, 23, 42, 0.75);
-    border: 1px solid rgba(255,255,255,0.10);
-    margin-bottom: 20px;
-    box-shadow: 0px 10px 35px rgba(0,0,0,0.18);
-}
-
-.card-title {
-    font-size: 21px;
-    font-weight: 700;
-    margin-bottom: 10px;
-    color: white;
-}
-
-.card-description {
-    color: #94a3b8;
-    line-height: 1.6;
-}
-
-
-/* ============================================================
-   STEP CARDS
-============================================================ */
-
-.step-card {
-    padding: 20px;
-    min-height: 160px;
-    border-radius: 18px;
-    background: rgba(30,41,59,0.65);
-    border: 1px solid rgba(255,255,255,0.08);
-}
-
-.step-number {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #6366f1, #a855f7);
-    font-weight: bold;
-    margin-bottom: 15px;
-}
-
-.step-card h3 {
-    color: white;
-    margin-bottom: 8px;
-}
-
-.step-card p {
-    color: #94a3b8;
-    line-height: 1.6;
-}
-
-
-/* ============================================================
-   RESULT CARDS
-============================================================ */
-
-.result-card {
-    padding: 22px;
-    border-radius: 18px;
-    background: rgba(15,23,42,0.85);
-    border: 1px solid rgba(99,102,241,0.25);
-    margin-bottom: 18px;
-}
-
-.result-title {
-    color: #a5b4fc;
-    font-size: 18px;
-    font-weight: 700;
-    margin-bottom: 12px;
-}
-
-
-/* ============================================================
-   ACTION ITEM
-============================================================ */
-
-.action-item {
-    padding: 16px;
-    border-radius: 14px;
-    background: rgba(30,41,59,0.8);
-    border-left: 4px solid #6366f1;
-    margin-bottom: 12px;
-}
-
-.action-task {
-    color: white;
-    font-weight: 600;
-    font-size: 16px;
-}
-
-.action-meta {
-    color: #94a3b8;
-    font-size: 14px;
-    margin-top: 7px;
-}
-
-
-/* ============================================================
-   PRIORITY BADGES
-============================================================ */
-
-.priority-high {
-    display: inline-block;
-    padding: 5px 10px;
-    border-radius: 999px;
-    background: rgba(239,68,68,0.15);
-    color: #fca5a5;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.priority-medium {
-    display: inline-block;
-    padding: 5px 10px;
-    border-radius: 999px;
-    background: rgba(245,158,11,0.15);
-    color: #fcd34d;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.priority-low {
-    display: inline-block;
-    padding: 5px 10px;
-    border-radius: 999px;
-    background: rgba(34,197,94,0.15);
-    color: #86efac;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-
-/* ============================================================
-   SIDEBAR
-============================================================ */
-
-section[data-testid="stSidebar"] {
-    background: #111827;
-}
-
-
-/* ============================================================
-   BUTTON
-============================================================ */
-
-.stButton > button {
-    width: 100%;
-    border-radius: 12px;
-    min-height: 48px;
-    font-weight: 700;
-    border: none;
-    background: linear-gradient(135deg, #6366f1, #9333ea);
-    color: white;
-}
-
-.stButton > button:hover {
-    border: none;
-    transform: translateY(-1px);
-}
-
-
-/* ============================================================
-   TEXT AREA
-============================================================ */
-
-textarea {
-    border-radius: 12px !important;
-}
-
-
-/* ============================================================
-   METRIC
-============================================================ */
-
-[data-testid="stMetric"] {
-    background: rgba(30,41,59,0.55);
-    border: 1px solid rgba(255,255,255,0.08);
-    padding: 15px;
-    border-radius: 15px;
-}
+    .small-text {
+        color: #64748b;
+    }
 
 </style>
 """, unsafe_allow_html=True)
@@ -300,232 +80,21 @@ textarea {
 # SESSION STATE
 # ============================================================
 
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+if "result" not in st.session_state:
+    st.session_state.result = None
+
 if "transcript" not in st.session_state:
     st.session_state.transcript = ""
 
-if "summary" not in st.session_state:
-    st.session_state.summary = ""
-
-if "action_items" not in st.session_state:
-    st.session_state.action_items = []
-
-if "processing_complete" not in st.session_state:
-    st.session_state.processing_complete = False
-
 
 # ============================================================
-# HELPER FUNCTIONS
+# API KEY
 # ============================================================
 
-def get_api_key():
-
-    """
-    Get Gemini API key from:
-    1. Streamlit secrets
-    2. Environment variable
-    3. Session state
-    """
-
-    api_key = None
-
-    try:
-        api_key = st.secrets.get("GEMINI_API_KEY", None)
-    except Exception:
-        pass
-
-    if not api_key:
-        api_key = os.getenv("GEMINI_API_KEY")
-
-    if not api_key:
-        api_key = st.session_state.get("gemini_api_key", None)
-
-    return api_key
-
-
-def create_gemini_client(api_key):
-
-    """
-    Create Gemini client.
-    """
-
-    client = genai.Client(api_key=api_key)
-
-    return client
-
-
-def save_uploaded_audio(uploaded_file):
-
-    """
-    Save uploaded audio temporarily.
-    """
-
-    file_extension = Path(uploaded_file.name).suffix
-
-    if not file_extension:
-        file_extension = ".mp3"
-
-    with tempfile.NamedTemporaryFile(
-        delete=False,
-        suffix=file_extension
-    ) as temp_file:
-
-        temp_file.write(uploaded_file.getvalue())
-
-        temp_path = temp_file.name
-
-    return temp_path
-
-
-def extract_json(text):
-
-    """
-    Extract JSON safely from Gemini response.
-    """
-
-    text = text.strip()
-
-    if text.startswith("```json"):
-        text = text.replace("```json", "", 1)
-
-    if text.startswith("```"):
-        text = text.replace("```", "", 1)
-
-    if text.endswith("```"):
-        text = text[:-3]
-
-    text = text.strip()
-
-    return json.loads(text)
-
-
-def analyze_audio(client, audio_path):
-
-    """
-    Upload audio to Gemini and analyze it.
-    """
-
-    uploaded_audio = client.files.upload(
-        file=audio_path
-    )
-
-    prompt = """
-You are an advanced AI productivity assistant.
-
-Analyze the provided voice recording carefully.
-
-Return ONLY valid JSON.
-
-Do not use markdown.
-Do not use code fences.
-Do not add explanations outside JSON.
-
-Use exactly this structure:
-
-{
-    "transcript": "Complete and accurate transcription of the audio",
-    "summary": "Clear and concise summary",
-    "action_items": [
-        {
-            "task": "Task that needs to be completed",
-            "person": "Person responsible or Unknown",
-            "deadline": "Deadline mentioned or Not specified",
-            "priority": "High, Medium, or Low"
-        }
-    ]
-}
-
-Instructions:
-
-1. Create a complete transcript.
-2. Correct obvious speech recognition mistakes where possible.
-3. Generate a useful professional summary.
-4. Identify every actionable task.
-5. Identify responsible people if mentioned.
-6. Identify deadlines if mentioned.
-7. Assign priority:
-   - High = urgent or important
-   - Medium = important but not urgent
-   - Low = optional or less urgent
-8. If there are no action items, return an empty array.
-"""
-
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[
-            uploaded_audio,
-            prompt
-        ]
-    )
-
-    response_text = response.text
-
-    result = extract_json(response_text)
-
-    return result
-
-
-def analyze_text(client, transcript):
-
-    """
-    Analyze manually entered transcript.
-    """
-
-    prompt = f"""
-You are an advanced AI productivity assistant.
-
-Analyze the following voice transcript.
-
-TRANSCRIPT:
-
-{transcript}
-
-Return ONLY valid JSON.
-
-Do not use markdown.
-Do not use code fences.
-
-Use exactly this structure:
-
-{{
-    "summary": "Clear and concise summary",
-    "action_items": [
-        {{
-            "task": "Task that needs to be completed",
-            "person": "Person responsible or Unknown",
-            "deadline": "Deadline mentioned or Not specified",
-            "priority": "High, Medium, or Low"
-        }}
-    ]
-}}
-"""
-
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
-
-    response_text = response.text
-
-    result = extract_json(response_text)
-
-    return result
-
-
-def priority_class(priority):
-
-    """
-    Get CSS class for priority.
-    """
-
-    priority = str(priority).lower()
-
-    if priority == "high":
-        return "priority-high"
-
-    elif priority == "medium":
-        return "priority-medium"
-
-    return "priority-low"
+api_key = os.getenv("OPENAI_API_KEY")
 
 
 # ============================================================
@@ -534,67 +103,46 @@ def priority_class(priority):
 
 with st.sidebar:
 
-    st.markdown("""
-    <div style="
-        padding: 15px;
-        border-radius: 15px;
-        background: linear-gradient(
-            135deg,
-            rgba(99,102,241,0.25),
-            rgba(168,85,247,0.15)
-        );
-        margin-bottom: 20px;
-    ">
-        <h2 style="margin:0;">🎙️ Voice AI</h2>
-        <p style="color:#94a3b8;">
-            Turn conversations into action.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("## 🎙️ VoiceNotes AI")
 
-    st.markdown("### 🔑 Gemini API")
-
-    api_input = st.text_input(
-        "Enter your Gemini API Key",
-        type="password",
-        placeholder="AIza..."
+    st.caption(
+        "Turn voice notes into summaries, "
+        "tasks and deadlines using AI."
     )
 
-    if api_input:
-        st.session_state.gemini_api_key = api_input
+    st.divider()
 
-    st.markdown("---")
+    st.markdown("### ⚙️ Features")
 
-    st.markdown("### 📊 Session")
+    st.write("🗣️ Speech-to-Text")
+    st.write("✨ AI Summaries")
+    st.write("✅ Action Items")
+    st.write("📅 Deadline Detection")
+    st.write("⚡ Priority Detection")
 
-    transcript_words = len(
-        st.session_state.transcript.split()
-    )
+    st.divider()
 
-    action_count = len(
-        st.session_state.action_items
-    )
+    st.markdown("### 📊 Processing History")
 
     st.metric(
-        "Transcript Words",
-        transcript_words
+        "Notes Processed",
+        len(st.session_state.history)
     )
 
-    st.metric(
-        "Action Items",
-        action_count
-    )
-
-    st.markdown("---")
-
-    if st.button("🗑️ Clear Session"):
-
+    if st.button(
+        "🗑️ Clear History",
+        use_container_width=True
+    ):
+        st.session_state.history = []
+        st.session_state.result = None
         st.session_state.transcript = ""
-        st.session_state.summary = ""
-        st.session_state.action_items = []
-        st.session_state.processing_complete = False
-
         st.rerun()
+
+    st.divider()
+
+    st.caption(
+        "Built with Streamlit + Speech-to-Text + AI"
+    )
 
 
 # ============================================================
@@ -604,625 +152,614 @@ with st.sidebar:
 st.markdown("""
 <div class="hero">
 
-    <div class="pill">
-        ✨ AI Productivity Assistant
-    </div>
+<h1>🎙️ Voice Notes → Action Items</h1>
 
-    <h1>
-        Voice Notes →
-        <br>
-        Action Items
-    </h1>
-
-    <p>
-        Record or upload your voice and instantly transform it
-        into an accurate transcript, intelligent summary,
-        structured tasks, responsible people and deadlines.
-    </p>
+<p>
+Transform your voice notes into clear summaries,
+actionable tasks and important deadlines.
+</p>
 
 </div>
 """, unsafe_allow_html=True)
 
 
 # ============================================================
-# HOW IT WORKS
+# MAIN TABS
 # ============================================================
 
-st.markdown("## 🎯 How It Works")
-
-step1, step2, step3 = st.columns(3)
-
-with step1:
-
-    st.markdown("""
-    <div class="step-card">
-
-        <div class="step-number">1</div>
-
-        <h3>🎙️ Listen</h3>
-
-        <p>
-            Upload or record your voice.
-            Gemini understands your audio.
-        </p>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-with step2:
-
-    st.markdown("""
-    <div class="step-card">
-
-        <div class="step-number">2</div>
-
-        <h3>🧠 Understand</h3>
-
-        <p>
-            AI creates an accurate transcript
-            and understands the conversation.
-        </p>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-with step3:
-
-    st.markdown("""
-    <div class="step-card">
-
-        <div class="step-number">3</div>
-
-        <h3>✅ Organize</h3>
-
-        <p>
-            Automatically extract tasks,
-            people, priorities and deadlines.
-        </p>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-st.markdown("<br>", unsafe_allow_html=True)
+tab1, tab2 = st.tabs([
+    "🎤 Process Voice Note",
+    "📚 History"
+])
 
 
 # ============================================================
-# INPUT SECTION
+# TAB 1 - PROCESS AUDIO
 # ============================================================
 
-st.markdown("""
-<div class="card">
+with tab1:
 
-    <div class="card-title">
-        🎙️ Add Your Voice Note
-    </div>
-
-    <div class="card-description">
-        Upload an audio file or record your voice directly.
-    </div>
-
-</div>
-""", unsafe_allow_html=True)
-
-
-input_tab1, input_tab2 = st.tabs(
-    [
-        "📁 Upload Audio",
-        "✍️ Paste Transcript"
-    ]
-)
-
-
-# ============================================================
-# UPLOAD AUDIO TAB
-# ============================================================
-
-with input_tab1:
-
-    uploaded_file = st.file_uploader(
-        "Upload your voice recording",
-        type=[
-            "mp3",
-            "wav",
-            "m4a",
-            "ogg",
-            "aac",
-            "flac"
-        ]
+    left, right = st.columns(
+        [1, 1],
+        gap="large"
     )
 
-    if uploaded_file:
+    # --------------------------------------------------------
+    # LEFT SIDE - AUDIO INPUT
+    # --------------------------------------------------------
 
-        st.success(
-            f"Audio selected: {uploaded_file.name}"
+    with left:
+
+        st.markdown(
+            '<div class="section-title">'
+            '🎤 Add Your Voice Note'
+            '</div>',
+            unsafe_allow_html=True
         )
 
-        try:
-            st.audio(
-                uploaded_file.getvalue()
+        input_method = st.radio(
+            "Choose input method",
+            [
+                "📁 Upload Audio",
+                "🎙️ Record Audio"
+            ],
+            horizontal=True
+        )
+
+        audio_file = None
+
+        if input_method == "📁 Upload Audio":
+
+            uploaded_file = st.file_uploader(
+                "Upload an audio file",
+                type=[
+                    "mp3",
+                    "wav",
+                    "m4a",
+                    "ogg",
+                    "webm"
+                ]
             )
-        except Exception:
-            pass
 
+            if uploaded_file:
+                audio_file = uploaded_file
 
-    process_audio_button = st.button(
-        "🚀 Analyze Voice Note",
-        disabled=(uploaded_file is None)
-    )
+        else:
 
-
-    if process_audio_button:
-
-        api_key = get_api_key()
-
-        if not api_key:
-
-            st.error(
-                "Please enter your Gemini API Key in the sidebar."
+            recorded_audio = st.audio_input(
+                "Record your voice note"
             )
 
-        elif uploaded_file is None:
+            if recorded_audio:
+                audio_file = recorded_audio
 
-            st.warning(
-                "Please upload an audio file first."
+
+        if audio_file:
+
+            st.success(
+                "Audio ready for processing!"
+            )
+
+            st.audio(audio_file)
+
+            process_button = st.button(
+                "✨ Process with AI",
+                use_container_width=True,
+                type="primary"
             )
 
         else:
 
-            temp_path = None
-
-            try:
-
-                with st.spinner(
-                    "🤖 Gemini is listening and analyzing your voice..."
-                ):
-
-                    client = create_gemini_client(
-                        api_key
-                    )
-
-                    temp_path = save_uploaded_audio(
-                        uploaded_file
-                    )
-
-                    result = analyze_audio(
-                        client,
-                        temp_path
-                    )
-
-                    st.session_state.transcript = (
-                        result.get(
-                            "transcript",
-                            ""
-                        )
-                    )
-
-                    st.session_state.summary = (
-                        result.get(
-                            "summary",
-                            ""
-                        )
-                    )
-
-                    st.session_state.action_items = (
-                        result.get(
-                            "action_items",
-                            []
-                        )
-                    )
-
-                    st.session_state.processing_complete = True
-
-                st.success(
-                    "Voice note analyzed successfully!"
-                )
-
-                st.rerun()
-
-
-            except Exception as e:
-
-                st.error(
-                    "Gemini processing failed."
-                )
-
-                st.code(
-                    str(e)
-                )
-
-
-            finally:
-
-                if temp_path:
-
-                    try:
-                        os.remove(
-                            temp_path
-                        )
-                    except Exception:
-                        pass
-
-
-# ============================================================
-# MANUAL TRANSCRIPT TAB
-# ============================================================
-
-with input_tab2:
-
-    manual_transcript = st.text_area(
-        "Paste your transcript here",
-        height=250,
-        placeholder="""
-Example:
-
-Tomorrow we need to finish the presentation.
-
-Rahul will prepare the design.
-
-I will complete the final report by Friday.
-
-The meeting is scheduled for Monday.
-"""
-    )
-
-
-    analyze_text_button = st.button(
-        "🧠 Analyze Transcript",
-        disabled=(
-            not manual_transcript.strip()
-        )
-    )
-
-
-    if analyze_text_button:
-
-        api_key = get_api_key()
-
-        if not api_key:
-
-            st.error(
-                "Please enter your Gemini API Key in the sidebar."
-            )
-
-        else:
-
-            try:
-
-                with st.spinner(
-                    "🤖 Gemini is analyzing the transcript..."
-                ):
-
-                    client = create_gemini_client(
-                        api_key
-                    )
-
-                    result = analyze_text(
-                        client,
-                        manual_transcript
-                    )
-
-                    st.session_state.transcript = (
-                        manual_transcript
-                    )
-
-                    st.session_state.summary = (
-                        result.get(
-                            "summary",
-                            ""
-                        )
-                    )
-
-                    st.session_state.action_items = (
-                        result.get(
-                            "action_items",
-                            []
-                        )
-                    )
-
-                    st.session_state.processing_complete = True
-
-
-                st.success(
-                    "Transcript analyzed successfully!"
-                )
-
-                st.rerun()
-
-
-            except Exception as e:
-
-                st.error(
-                    "Gemini analysis failed."
-                )
-
-                st.code(
-                    str(e)
-                )
-
-
-# ============================================================
-# RESULTS
-# ============================================================
-
-if st.session_state.processing_complete:
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="hero">
-
-        <div class="pill">
-            ✨ Analysis Complete
-        </div>
-
-        <h2 style="color:white;">
-            Your AI Results
-        </h2>
-
-        <p>
-            Review the transcript, summary
-            and automatically extracted action items.
-        </p>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-    result_tab1, result_tab2, result_tab3 = st.tabs(
-        [
-            "📄 Transcript",
-            "🧠 Summary",
-            "✅ Action Items"
-        ]
-    )
-
-
-    # ========================================================
-    # TRANSCRIPT
-    # ========================================================
-
-    with result_tab1:
-
-        st.markdown("""
-        <div class="result-card">
-
-            <div class="result-title">
-                🎙️ Complete Transcript
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
-
-
-        st.text_area(
-            "Transcript",
-            value=st.session_state.transcript,
-            height=400,
-            key="transcript_display"
-        )
-
-
-        st.download_button(
-            label="⬇️ Download Transcript",
-            data=st.session_state.transcript,
-            file_name="voice_transcript.txt",
-            mime="text/plain"
-        )
-
-
-    # ========================================================
-    # SUMMARY
-    # ========================================================
-
-    with result_tab2:
-
-        st.markdown("""
-        <div class="result-card">
-
-            <div class="result-title">
-                🧠 AI Generated Summary
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
-
-
-        st.write(
-            st.session_state.summary
-        )
-
-
-        st.download_button(
-            label="⬇️ Download Summary",
-            data=st.session_state.summary,
-            file_name="voice_summary.txt",
-            mime="text/plain"
-        )
-
-
-    # ========================================================
-    # ACTION ITEMS
-    # ========================================================
-
-    with result_tab3:
-
-        action_items = (
-            st.session_state.action_items
-        )
-
-
-        if not action_items:
+            process_button = False
 
             st.info(
-                "No action items were found."
+                "Upload or record a voice note "
+                "to begin."
+            )
+
+
+    # --------------------------------------------------------
+    # RIGHT SIDE - HOW IT WORKS
+    # --------------------------------------------------------
+
+    with right:
+
+        st.markdown(
+            '<div class="section-title">'
+            '🤖 AI Processing'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        st.markdown("""
+<div class="feature-card">
+
+### 1️⃣ Speech Recognition
+
+Your voice is converted into an accurate
+text transcript.
+
+<br>
+
+### 2️⃣ AI Understanding
+
+The AI understands the meaning and
+important information.
+
+<br>
+
+### 3️⃣ Smart Extraction
+
+Tasks, priorities and deadlines are
+automatically identified.
+
+</div>
+""", unsafe_allow_html=True)
+
+
+    # ========================================================
+    # PROCESS BUTTON
+    # ========================================================
+
+    if process_button:
+
+        if not api_key:
+
+            st.error(
+                "🔑 OpenAI API key not configured. "
+                "Add OPENAI_API_KEY to your deployment secrets."
             )
 
         else:
 
-            high_count = sum(
-                1
-                for item in action_items
-                if str(
-                    item.get(
-                        "priority",
-                        ""
+            try:
+
+                client = OpenAI(
+                    api_key=api_key
+                )
+
+
+                # =================================================
+                # SPEECH TO TEXT
+                # =================================================
+
+                with st.spinner(
+                    "🗣️ Converting your voice into text..."
+                ):
+
+                    transcription = (
+                        client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=audio_file
+                        )
                     )
-                ).lower() == "high"
-            )
+
+                transcript = transcription.text
+
+                st.session_state.transcript = transcript
 
 
-            medium_count = sum(
-                1
-                for item in action_items
-                if str(
-                    item.get(
-                        "priority",
-                        ""
+                # =================================================
+                # AI ANALYSIS
+                # =================================================
+
+                with st.spinner(
+                    "🤖 AI is finding tasks and deadlines..."
+                ):
+
+                    prompt = f"""
+Analyze this voice note transcript.
+
+Return ONLY valid JSON.
+
+Use this exact structure:
+
+{{
+    "summary": "A short and clear summary",
+
+    "action_items": [
+        {{
+            "task": "Description of the task",
+            "deadline": "Deadline or Not specified",
+            "priority": "High, Medium, or Low"
+        }}
+    ],
+
+    "deadlines": [
+        "Deadline 1",
+        "Deadline 2"
+    ],
+
+    "key_people": [
+        "Names of people mentioned"
+    ]
+}}
+
+Instructions:
+
+- Extract every actionable task.
+- Identify deadlines and dates.
+- Assign High, Medium or Low priority.
+- Create a concise summary.
+- Identify important people mentioned.
+- If information is unavailable,
+  return an empty list where appropriate.
+- Return ONLY valid JSON.
+- Do not use markdown.
+
+VOICE NOTE TRANSCRIPT:
+
+{transcript}
+"""
+
+                    response = (
+                        client.chat.completions.create(
+
+                            model="gpt-4o-mini",
+
+                            messages=[
+                                {
+                                    "role": "system",
+
+                                    "content": (
+                                        "You are an AI productivity "
+                                        "assistant that converts voice "
+                                        "notes into structured tasks."
+                                    )
+                                },
+
+                                {
+                                    "role": "user",
+
+                                    "content": prompt
+                                }
+                            ]
+                        )
                     )
-                ).lower() == "medium"
-            )
 
 
-            low_count = sum(
-                1
-                for item in action_items
-                if str(
-                    item.get(
-                        "priority",
+                result_text = (
+                    response
+                    .choices[0]
+                    .message
+                    .content
+                )
+
+
+                # =================================================
+                # CLEAN JSON RESPONSE
+                # =================================================
+
+                result_text = (
+                    result_text
+                    .replace("```json", "")
+                    .replace("```", "")
+                    .strip()
+                )
+
+                data = json.loads(
+                    result_text
+                )
+
+
+                # =================================================
+                # SAVE RESULT
+                # =================================================
+
+                st.session_state.result = data
+
+                st.session_state.history.append({
+                    "transcript": transcript,
+                    "summary": data.get(
+                        "summary",
                         ""
+                    ),
+                    "action_count": len(
+                        data.get(
+                            "action_items",
+                            []
+                        )
                     )
-                ).lower() == "low"
-            )
+                })
 
-
-            metric1, metric2, metric3, metric4 = (
-                st.columns(4)
-            )
-
-
-            metric1.metric(
-                "Total Tasks",
-                len(action_items)
-            )
-
-            metric2.metric(
-                "🔴 High",
-                high_count
-            )
-
-            metric3.metric(
-                "🟡 Medium",
-                medium_count
-            )
-
-            metric4.metric(
-                "🟢 Low",
-                low_count
-            )
-
-
-            st.markdown("<br>", unsafe_allow_html=True)
-
-
-            for index, item in enumerate(
-                action_items,
-                start=1
-            ):
-
-                task = item.get(
-                    "task",
-                    "No task description"
+                st.success(
+                    "🎉 Voice note processed successfully!"
                 )
 
-                person = item.get(
-                    "person",
-                    "Unknown"
+
+            except json.JSONDecodeError:
+
+                st.error(
+                    "AI returned an invalid format. "
+                    "Please try processing again."
                 )
 
-                deadline = item.get(
-                    "deadline",
-                    "Not specified"
+
+            except Exception as e:
+
+                st.error(
+                    f"Processing error: {str(e)}"
                 )
 
-                priority = item.get(
-                    "priority",
-                    "Low"
+
+    # ========================================================
+    # DISPLAY RESULTS
+    # ========================================================
+
+    if st.session_state.result:
+
+        data = st.session_state.result
+
+        st.divider()
+
+        st.markdown(
+            "## 📊 AI Analysis Results"
+        )
+
+
+        # ====================================================
+        # METRICS
+        # ====================================================
+
+        metric1, metric2, metric3 = st.columns(3)
+
+        action_count = len(
+            data.get(
+                "action_items",
+                []
+            )
+        )
+
+        deadline_count = len(
+            data.get(
+                "deadlines",
+                []
+            )
+        )
+
+        people_count = len(
+            data.get(
+                "key_people",
+                []
+            )
+        )
+
+        metric1.metric(
+            "✅ Action Items",
+            action_count
+        )
+
+        metric2.metric(
+            "📅 Deadlines",
+            deadline_count
+        )
+
+        metric3.metric(
+            "👥 People Mentioned",
+            people_count
+        )
+
+
+        # ====================================================
+        # RESULT TABS
+        # ====================================================
+
+        result_tab1, result_tab2, result_tab3, result_tab4 = (
+            st.tabs([
+                "📝 Transcript",
+                "✨ Summary",
+                "✅ Tasks",
+                "📅 Details"
+            ])
+        )
+
+
+        # ----------------------------------------------------
+        # TRANSCRIPT
+        # ----------------------------------------------------
+
+        with result_tab1:
+
+            st.markdown(
+                "### Complete Transcript"
+            )
+
+            st.text_area(
+                "Transcript",
+                value=st.session_state.transcript,
+                height=250,
+                disabled=True,
+                label_visibility="collapsed"
+            )
+
+
+        # ----------------------------------------------------
+        # SUMMARY
+        # ----------------------------------------------------
+
+        with result_tab2:
+
+            st.markdown(
+                "### ✨ AI Summary"
+            )
+
+            st.success(
+                data.get(
+                    "summary",
+                    "No summary generated."
+                )
+            )
+
+
+        # ----------------------------------------------------
+        # ACTION ITEMS
+        # ----------------------------------------------------
+
+        with result_tab3:
+
+            action_items = data.get(
+                "action_items",
+                []
+            )
+
+            if action_items:
+
+                for index, item in enumerate(
+                    action_items,
+                    start=1
+                ):
+
+                    with st.container(
+                        border=True
+                    ):
+
+                        st.markdown(
+                            f"### {index}. "
+                            f"{item.get('task', 'Task')}"
+                        )
+
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+
+                            st.write(
+                                "📅 **Deadline:** "
+                                f"{item.get('deadline', 'Not specified')}"
+                            )
+
+                        with col2:
+
+                            priority = item.get(
+                                "priority",
+                                "Medium"
+                            )
+
+                            st.write(
+                                f"⚡ **Priority:** {priority}"
+                            )
+
+            else:
+
+                st.info(
+                    "No action items were detected."
                 )
 
-                css_class = priority_class(
-                    priority
-                )
 
+        # ----------------------------------------------------
+        # DEADLINES + PEOPLE
+        # ----------------------------------------------------
+
+        with result_tab4:
+
+            col1, col2 = st.columns(2)
+
+            with col1:
 
                 st.markdown(
-                    f"""
-                    <div class="action-item">
-
-                        <div class="action-task">
-                            {index}. {task}
-                        </div>
-
-                        <div class="action-meta">
-
-                            👤 <b>Responsible:</b> {person}
-
-                            <br><br>
-
-                            📅 <b>Deadline:</b> {deadline}
-
-                            <br><br>
-
-                            <span class="{css_class}">
-                                {priority} Priority
-                            </span>
-
-                        </div>
-
-                    </div>
-                    """,
-                    unsafe_allow_html=True
+                    "### 📅 Important Dates"
                 )
 
+                deadlines = data.get(
+                    "deadlines",
+                    []
+                )
 
-            # ================================================
-            # DOWNLOAD JSON
-            # ================================================
+                if deadlines:
 
-            action_json = json.dumps(
-                action_items,
-                indent=4
-            )
+                    for deadline in deadlines:
+
+                        st.write(
+                            f"📌 {deadline}"
+                        )
+
+                else:
+
+                    st.info(
+                        "No deadlines mentioned."
+                    )
 
 
-            st.download_button(
-                label="⬇️ Download Action Items JSON",
-                data=action_json,
-                file_name="action_items.json",
-                mime="application/json"
-            )
+            with col2:
+
+                st.markdown(
+                    "### 👥 People Mentioned"
+                )
+
+                people = data.get(
+                    "key_people",
+                    []
+                )
+
+                if people:
+
+                    for person in people:
+
+                        st.write(
+                            f"👤 {person}"
+                        )
+
+                else:
+
+                    st.info(
+                        "No people detected."
+                    )
+
+
+# ============================================================
+# TAB 2 - HISTORY
+# ============================================================
+
+with tab2:
+
+    st.markdown(
+        "## 📚 Processing History"
+    )
+
+    history = st.session_state.history
+
+    if history:
+
+        for index, item in enumerate(
+            reversed(history),
+            start=1
+        ):
+
+            with st.expander(
+                f"Voice Note {index} — "
+                f"{item['action_count']} Tasks"
+            ):
+
+                st.markdown(
+                    "### ✨ Summary"
+                )
+
+                st.write(
+                    item["summary"]
+                )
+
+                st.markdown(
+                    "### 📝 Transcript"
+                )
+
+                st.write(
+                    item["transcript"]
+                )
+
+    else:
+
+        st.info(
+            "Your processed voice notes "
+            "will appear here."
+        )
 
 
 # ============================================================
 # FOOTER
 # ============================================================
 
-st.markdown("<br><br>", unsafe_allow_html=True)
+st.divider()
 
-st.markdown("""
-<div style="
-    text-align:center;
-    color:#64748b;
-    padding:25px;
-">
-
-    🎙️ Voice Notes → Action Items
-
-    <br>
-
-    Powered by Gemini AI ✨
-
-</div>
-""", unsafe_allow_html=True)
+st.caption(
+    "🎙️ VoiceNotes AI • "
+    "AI-powered Speech-to-Text & Action Item Extraction"
+        )
