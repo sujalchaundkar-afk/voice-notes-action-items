@@ -50,29 +50,33 @@ Voice Notes → Action Items helps users turn conversations, meetings, lectures,
 ---
 
 
-## 🧠 How It Works
+## ⚙️ Run Locally
 
-```text
-🎤 Voice Note / 📝 Text Input
-            │
-            ▼
-     Speech-to-Text
-      (Voice Input)
-            │
-            ▼
-       Transcription
-            │
-            ▼
-       OpenAI API
-            │
-            ▼
-      AI Analysis
-            │
-            ▼
-┌───────────────────────────┐
-│ ✨ Summary                │
-│ 📋 Action Items           │
-│ 🎯 Priorities             │
-│ 📅 Deadlines              │
-│ 👥 Responsibilities       │
-└───────────────────────────┘
+Clone the repository and navigate to the project directory:
+
+```bash
+git clone YOUR_GITHUB_REPOSITORY_URL
+cd voice-notes-action-items
+
+Create and activate a virtual environment:
+
+python -m venv .venv
+
+Install the required dependencies:
+
+pip install -r requirements.txt
+
+Configure your OpenAI API key in .streamlit/secrets.toml:
+
+OPENAI_API_KEY = "your_openai_api_key_here"
+
+Run the application:
+
+streamlit run app.py
+
+Open the application in your browser at:
+
+http://localhost:8501
+
+---
+
