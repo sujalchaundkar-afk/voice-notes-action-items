@@ -32,6 +32,12 @@ Make sure you have Python 3.9 or higher installed. You will also need a **Gemini
 ### 2. Clone the Repository
 
 ```bash
-git clone [https://github.com/sujalchaundkar-afk/voice-notes-action-items.git](https://github.com/sujalchaundkar-afk/voice-notes-action-items.git)
+git clone https://github.com/sujalchaundkar-afk/voice-notes-action-items
 cd voice-notes-action-items
+### 3.pip install -r requirements.txt
+---
+### 4.GEMINI_API_KEY=your_gemini_api_key_here
 
+### 5.streamlit run app.py
+
+Open your browser at http://localhost:8501 to use the application.
